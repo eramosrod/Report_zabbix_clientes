@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Informe de Estado Zabbix</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f6f9;
+            color: #333;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        /* Banner */
+        .banner {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 15px rgba(30, 60, 114, 0.3);
+        }
+        .banner h1 {
+            font-size: 2.2rem;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+        .banner .meta {
+            display: flex;
+            gap: 30px;
+            flex-wrap: wrap;
+            font-size: 1rem;
+            opacity: 0.9;
+        }
+        .banner .meta span {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        /* Section */
+        .section {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            margin-bottom: 25px;
+            overflow: hidden;
+        }
+        .section-header {
+            background: #f8f9fa;
+            padding: 18px 25px;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .section-header h2 {
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: #1e3c72;
+        }
+        .section-header .badge {
+            background: #1e3c72;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+        .section-content {
+            padding: 25px;
+        }
+        /* Tables */
+        .table-container {
+            overflow-x: auto;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.88rem;
+        }
+        th, td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #e9ecef;
+        }
+        th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #495057;
+            white-space: nowrap;
+            position: sticky;
+            top: 0;
+        }
+        tr:hover td {
+            background: #f8f9fa;
+        }
+        tr:last-child td {
+            border-bottom: none;
+        }
+        /* Severity badges - Zabbix Official Color Palette */
+        .severity {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        .severity-disaster { background: #fdeaea; color: #E45959; }
+        .severity-high { background: #fef0e0; color: #E97659; }
+        .severity-average { background: #fff8e1; color: #FFA15C; }
+        .severity-warning { background: #e8f4fd; color: #FFC859; }
+        .severity-info { background: #e8f8f5; color: #7499FF; }
+        .severity-notclassified { background: #f0f0f0; color: #7f8c8d; }
+        /* Status badges */
+        .status {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 4px;
+            font-size: 0.78rem;
+            font-weight: 600;
+        }
+        .status-problem { background: #fdeaea; color: #E45959; }
+        .status-ok { background: #e8f8f5; color: #1abc9c; }
+        /* Environment cards */
+        .env-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 20px;
+        }
+        .env-card {
+            background: white;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 20px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        /* Environment card states based on active alerts */
+        .env-card.has-alerts {
+            border-left: 5px solid #E45959;
+        }
+        .env-card.no-alerts {
+            border-left: 5px solid #1abc9c;
+        }
+        .env-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.1);
+        }
+        .env-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 15px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #e9ecef;
+        }
+        .env-card-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #1e3c72;
+        }
+        .env-card-title.has-alerts {
+            color: #E45959;
+        }
+        .env-card-title.no-alerts {
+            color: #1abc9c;
+        }
+        .env-card-stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+        }
+        .env-stat {
+            text-align: center;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 6px;
+        }
+        .env-stat-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #1e3c72;
+        }
+        .env-stat-label {
+            font-size: 0.75rem;
+            color: #6c757d;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .env-severity-breakdown {
+            margin-top: 15px;
+        }
+        .env-severity-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            font-size: 0.85rem;
+        }
+        .env-severity-row .label {
+            color: #6c757d;
+        }
+        .env-severity-row .value {
+            font-weight: 600;
+        }
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 20px;
+            color: #6c757d;
+            font-size: 0.85rem;
+        }
+        /* Empty state */
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #6c757d;
+        }
+        .empty-state svg {
+            width: 64px;
+            height: 64px;
+            margin-bottom: 15px;
+            opacity: 0.5;
+        }
+        /* Responsive */
+        @media (max-width: 768px) {
+            .container { padding: 15px; }
+            .banner h1 { font-size: 1.6rem; }
+            .section-content { padding: 15px; }
+            th, td { padding: 10px 12px; font-size: 0.8rem; }
+            .env-card-stats { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+
+        <!-- BANNER SUPERIOR -->
+        <div class="banner">
+            <h1>📊 Informe de Estado Zabbix</h1>
+            <div class="meta">
+                <span>🕐 Generado: 2026-11-07 23:57:26</span>
+                <span>🖥️ Total Hosts: 20</span>
+                <span>⚠️ Problemas Totales (Histórico problem.get): 5</span>
+                <span>📊 Eventos Totales (Histórico event.get - Top Triggers): 10</span>
+                <span>🔴 Problemas Activos: 2</span>
+                <span>🌍 Entornos: 2</span>
+                
+            </div>
+        </div>
+
+        <!-- ESTADO DE ENTORNOS -->
+        <div class="section">
+            <div class="section-header">
+                <h2>Estado de Entornos (HostGroups)</h2>
+                <span class="badge">2 entornos</span>
+            </div>
+            <div class="section-content">
+                <div class="env-grid">
+                    
+            <div class="env-card has-alerts">
+                <div class="env-card-header">
+                    <div class="env-card-title has-alerts">Producción</div>
+                    <span class="badge">3 problemas</span>
+                </div>
+                <div class="env-card-stats">
+                    <div class="env-stat">
+                        <div class="env-stat-value">10</div>
+                        <div class="env-stat-label">Hosts</div>
+                    </div>
+                    <div class="env-stat">
+                        <div class="env-stat-value">3</div>
+                        <div class="env-stat-label">Problemas</div>
+                    </div>
+                    <div class="env-stat">
+                        <div class="env-stat-value">2</div>
+                        <div class="env-stat-label">Críticos</div>
+                    </div>
+                </div>
+                <div class="env-severity-breakdown">
+                    <div class="env-severity-row">
+                        <span class="label">🔴 Disaster</span>
+                        <span class="value severity severity-disaster">1</span>
+                    </div>
+                    <div class="env-severity-row">
+                        <span class="label">🟠 High</span>
+                        <span class="value severity severity-high">1</span>
+                    </div>
+                    <div class="env-severity-row">
+                        <span class="label">🟡 Average</span>
+                        <span class="value severity severity-average">1</span>
+                    </div>
+                    <div class="env-severity-row">
+                        <span class="label">🔵 Warning</span>
+                        <span class="value severity severity-warning">0</span>
+                    </div>
+                    <div class="env-severity-row">
+                        <span class="label">🟢 Information</span>
+                        <span class="value severity severity-info">0</span>
+                    </div>
+                    <div class="env-severity-row">
+                        <span class="label">⚪ Not classified</span>
+                        <span class="value severity severity-notclassified">0</span>
+                    </div>
+                </div>
+            </div>
+            <div class="env-card no-alerts">
+                <div class="env-card-header">
+                    <div class="env-card-title no-alerts">Desarrollo</div>
+                    <span class="badge">0 problemas</span>
+                </div>
+                <div class="env-card-stats">
+                    <div class="env-stat">
+                        <div class="env-stat-value">5</div>
+                        <div class="env-stat-label">Hosts</div>
+                    </div>
+                    <div class="env-stat">
+                        <div class="env-stat-value">0</div>
+                        <div class="env-stat-label">Problemas</div>
+                    </div>
+                    <div class="env-stat">
+                        <div class="env-stat-value">0</div>
+                        <div class="env-stat-label">Críticos</div>
+                    </div>
+                </div>
+                <div class="env-severity-breakdown">
+                    <div class="env-severity-row">
+                        <span class="label">🔴 Disaster</span>
+                        <span class="value severity severity-disaster">0</span>
+                    </div>
+                    <div class="env-severity-row">
+                        <span class="label">🟠 High</span>
+                        <span class="value severity severity-high">0</span>
+                    </div>
+                    <div class="env-severity-row">
+                        <span class="label">🟡 Average</span>
+                        <span class="value severity severity-average">0</span>
+                    </div>
+                    <div class="env-severity-row">
+                        <span class="label">🔵 Warning</span>
+                        <span class="value severity severity-warning">0</span>
+                    </div>
+                    <div class="env-severity-row">
+                        <span class="label">🟢 Information</span>
+                        <span class="value severity severity-info">0</span>
+                    </div>
+                    <div class="env-severity-row">
+                        <span class="label">⚪ Not classified</span>
+                        <span class="value severity severity-notclassified">0</span>
+                    </div>
+                </div>
+            </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- RESUMEN DE ALERTAS -->
+        <div class="section">
+            <div class="section-header">
+                <h2>Resumen de Alertas (Agrupado por problema)</h2>
+                <span class="badge">2 problemas únicos | 5 ocurrencias totales</span>
+            </div>
+            <div class="section-content">
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Host</th>
+                                <th>Trigger / Alerta</th>
+                                <th>Severidad</th>
+                                <th>Nombre de problemas</th>
+                                <th style="text-align: right;">Veces</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            
+            <tr>
+                <td>prod-web-01</td>
+                <td>CPU load too high</td>
+                <td><span class="severity severity-disaster">Disaster</span></td>
+                <td>CPU load too high</td>
+                <td style="text-align: right; font-weight: 600;">3</td>
+            </tr>
+            <tr>
+                <td>prod-db-01</td>
+                <td>Disk space low</td>
+                <td><span class="severity severity-high">High</span></td>
+                <td>Disk space low</td>
+                <td style="text-align: right; font-weight: 600;">2</td>
+            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ENLACES GLPI -->
+        <div class="section">
+            <div class="section-header">
+                <h2>Enlaces GLPI</h2>
+                <span class="badge">Sin enlaces</span>
+            </div>
+            <div class="section-content">
+                <div class="empty-state">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                    <p>No se encontraron problemas con el tag '__zbx_glpi_link'.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- ALERTAS ACTIVAS -->
+        <div class="section">
+            <div class="section-header">
+                <h2>Alertas (Tabla Temporal - Histórico + Activas)</h2>
+                <span class="badge">2 total | 1 activas | 1 resueltas</span>
+            </div>
+            <div class="section-content">
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Recovery Time</th>
+                                <th>Status</th>
+                                <th>Host</th>
+                                <th>Severity</th>
+                                <th>Trigger/Problem</th>
+                                <th>Duration</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            
+            <tr>
+                <td>2026-11-07 10:00:00</td>
+                <td>2026-11-07 10:15:00</td>
+                <td><span class="status status-ok">OK</span></td>
+                <td>prod-web-01</td>
+                <td><span class="severity severity-disaster">Disaster</span></td>
+                <td>CPU load too high</td>
+                <td>15m</td>
+            </tr>
+            <tr>
+                <td>2026-11-07 11:00:00</td>
+                <td>—</td>
+                <td><span class="status status-problem">PROBLEM</span></td>
+                <td>prod-db-01</td>
+                <td><span class="severity severity-high">High</span></td>
+                <td>Disk space low</td>
+                <td>2h 30m</td>
+            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </div>
+    <div class="footer">
+        <p>Informe generado automáticamente por Generador de Informes Zabbix v0.12.0</p>
+        <p>Fase 9.5 - Paleta de colores oficial Zabbix y estados visuales de entornos</p>
+    </div>
+</body>
+</html>

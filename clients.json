@@ -1,0 +1,16 @@
+{
+  "cliente_a": {
+    "empresa": "Acme Corp S.A.",
+    "logo_path": "assets/logos/acme.png",
+    "zabbix_url": "http://192.168.1.23/zabbix/api_jsonrpc.php",
+    "zabbix_user": "zabbix_reporter",
+    "zabbix_pass": "A.bast2026"
+  },
+  "cliente_b": {
+    "empresa": "Global Logistics S.L.",
+    "logo_path": "assets/logos/global.png",
+    "zabbix_url": "http://192.168.1.23/zabbix/api_jsonrpc.php",
+    "zabbix_user": "reporter_b",
+    "zabbix_pass": "password_b"
+  }
+}
