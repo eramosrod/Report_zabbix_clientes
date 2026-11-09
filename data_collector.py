@@ -724,8 +724,10 @@ class DataCollector:
         # Tabla temporal (Alertas Activas): usar SOLO problemas activos actuales (SIN filtro temporal)
         active_alerts_data = self.format_problems_for_active_alerts_table(active_problems)
         
-        # Extraer enlaces GLPI del histórico de problemas (CON filtro temporal)
-        glpi_links = self.get_glpi_links(all_problems_history)
+        # Extraer enlaces GLPI de TODOS los problemas (histórico + activos)
+        # Para asegurar que se muestran todos los tickets, independientemente del filtro temporal
+        all_problems_for_glpi = self.get_problems_history(time_from=None, time_till=None, limit=limit)
+        glpi_links = self.get_glpi_links(all_problems_for_glpi)
         
         # DEBUG: Contar GLPI links en el informe final
         logger.info(f"DEBUG COUNTS - GLPI links in final report: {len(glpi_links)}")
