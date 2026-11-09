@@ -165,6 +165,7 @@ class DataCollector:
             
             # Obtener información del trigger (del campo triggers[])
             trigger_info = {}
+            item_info = {}
             trigger_description = "Sin descripción"
             trigger_priority = 0
             if event.get("triggers") and len(event["triggers"]) > 0:
@@ -177,12 +178,21 @@ class DataCollector:
                     'status': trigger.get('status', 0),
                     'url': trigger.get('url', ''),
                 }
+                # Obtener información del item para resolver macros como {ITEM.VALUE1}
+                if trigger.get("items") and len(trigger["items"]) > 0:
+                    item = trigger["items"][0]
+                    item_info = {
+                        'name': item.get('name', ''),
+                        'key_': item.get('key_', ''),
+                        'lastvalue': item.get('lastvalue', ''),
+                    }
             
             # Resolver macros en la descripción del trigger
             resolved_description = self.zabbix.resolve_macros(
                 trigger_description,
                 host_info=host_info,
-                trigger_info=trigger_info
+                trigger_info=trigger_info,
+                item_info=item_info
             )
             
             # Convertir severidad numérica a texto (usando priority del trigger)
@@ -289,6 +299,17 @@ class DataCollector:
             
             # Resolver macros en el nombre del problema
             problem_name = problem.get("name", "Sin descripción")
+            
+            # Obtener información del item del trigger para resolver macros como {ITEM.VALUE1}
+            item_info = {}
+            if problem.get("trigger") and problem["trigger"].get("items") and len(problem["trigger"]["items"]) > 0:
+                item = problem["trigger"]["items"][0]
+                item_info = {
+                    'name': item.get('name', ''),
+                    'key_': item.get('key_', ''),
+                    'lastvalue': item.get('lastvalue', ''),
+                }
+            
             resolved_name = self.zabbix.resolve_macros(
                 problem_name,
                 host_info=host_info,
@@ -297,7 +318,8 @@ class DataCollector:
                     'clock': clock,
                     'name': problem_name,
                     'value': problem.get('value', 1),
-                }
+                },
+                item_info=item_info
             )
             
             enriched_problems.append({

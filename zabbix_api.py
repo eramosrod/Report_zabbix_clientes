@@ -36,6 +36,7 @@ class ZabbixAPI:
         '{ITEM.KEY}': 'item_key',
         '{ITEM.VALUE}': 'item_value',
         '{ITEM.LASTVALUE}': 'item_lastvalue',
+        '{ITEM.VALUE1}': 'item_value1',  # Alias común para el primer valor en expresiones de trigger
         '{TRIGGER.NAME}': 'trigger_name',
         '{TRIGGER.DESCRIPTION}': 'trigger_description',
         '{TRIGGER.STATUS}': 'trigger_status',
@@ -321,7 +322,7 @@ class ZabbixAPI:
         
         Args:
             text: Texto que puede contener macros de Zabbix
-            host_info: Información del host (name, host, ip, dns, port)
+            host_info: Información del host (name, host, ip, dns, port, conn)
             trigger_info: Información del trigger (description, priority, status, url)
             item_info: Información del item (name, key, lastvalue)
             event_info: Información del evento (eventid, clock, name, value, etc.)
@@ -340,7 +341,11 @@ class ZabbixAPI:
             result = result.replace('{HOST.HOST}', host_info.get('host', ''))
             result = result.replace('{HOST.IP}', host_info.get('ip', ''))
             result = result.replace('{HOST.DNS}', host_info.get('dns', ''))
-            result = result.replace('{HOST.CONN}', host_info.get('conn', ''))
+            # HOST.CONN es IP o DNS según configuración
+            conn = host_info.get('conn', '')
+            if not conn:
+                conn = host_info.get('ip', '') or host_info.get('dns', '')
+            result = result.replace('{HOST.CONN}', conn)
             result = result.replace('{HOST.PORT}', str(host_info.get('port', '')))
         
         # Resolver macros de trigger
@@ -356,8 +361,11 @@ class ZabbixAPI:
         if item_info:
             result = result.replace('{ITEM.NAME}', item_info.get('name', ''))
             result = result.replace('{ITEM.KEY}', item_info.get('key_', ''))
-            result = result.replace('{ITEM.VALUE}', str(item_info.get('lastvalue', '')))
-            result = result.replace('{ITEM.LASTVALUE}', str(item_info.get('lastvalue', '')))
+            lastvalue = str(item_info.get('lastvalue', ''))
+            result = result.replace('{ITEM.VALUE}', lastvalue)
+            result = result.replace('{ITEM.LASTVALUE}', lastvalue)
+            # ITEM.VALUE1 es alias común para el primer valor en expresiones de trigger
+            result = result.replace('{ITEM.VALUE1}', lastvalue)
         
         # Resolver macros de evento
         if event_info:
@@ -462,7 +470,8 @@ class ZabbixAPI:
             if triggerids:
                 triggers = self._make_request("trigger.get", {
                     "triggerids": triggerids,
-                    "output": ["triggerid", "status"]
+                    "output": ["triggerid", "status"],
+                    "selectItems": ["name", "key_", "lastvalue"]
                 })
                 trigger_status_map = {t["triggerid"]: str(t.get("status", "0")) for t in triggers}
                 
@@ -473,6 +482,10 @@ class ZabbixAPI:
                     trigger_status = trigger_status_map.get(triggerid, "0")
                     
                     if triggerid and trigger_status == "0":
+                        # Añadir información del trigger y items al problema para resolución de macros
+                        trigger = next((t for t in triggers if t["triggerid"] == triggerid), None)
+                        if trigger:
+                            problem["trigger"] = trigger
                         filtered_problems.append(problem)
                     elif not triggerid:
                         # Si no hay triggerid, mantener el problema (no se puede verificar)
@@ -580,7 +593,8 @@ class ZabbixAPI:
             if triggerids:
                 triggers = self._make_request("trigger.get", {
                     "triggerids": triggerids,
-                    "output": ["triggerid", "status"]
+                    "output": ["triggerid", "status"],
+                    "selectItems": ["name", "key_", "lastvalue"]
                 })
                 trigger_status_map = {t["triggerid"]: str(t.get("status", "0")) for t in triggers}
                 
@@ -589,6 +603,10 @@ class ZabbixAPI:
                 for problem in host_filtered:
                     triggerid = problem.get("objectid")
                     if triggerid and trigger_status_map.get(triggerid, "0") == "0":
+                        # Añadir información del trigger y items al problema para resolución de macros
+                        trigger = next((t for t in triggers if t["triggerid"] == triggerid), None)
+                        if trigger:
+                            problem["trigger"] = trigger
                         filtered_problems.append(problem)
                     elif not triggerid:
                         # Si no hay triggerid, mantener el problema (no se puede verificar)
@@ -678,7 +696,8 @@ class ZabbixAPI:
             # Consultar trigger.get con status para filtrar triggers deshabilitados
             triggers = self._make_request("trigger.get", {
                 "triggerids": triggerids,
-                "output": ["triggerid", "description", "priority", "status"]
+                "output": ["triggerid", "description", "priority", "status"],
+                "selectItems": ["name", "key_", "lastvalue"]
             })
             # Mapear triggers
             trigger_map = {t["triggerid"]: t for t in triggers}

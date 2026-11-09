@@ -5,6 +5,7 @@ Todos los cambios notables en este proyecto serán documentados en este archivo.
 ## [0.18.0] - 2026-11-09
 
 ### Corregido
+- **Macros Zabbix no resueltas en HTML**: Corregida la falta de resolución de macros `{ITEM.VALUE1}` y `{HOST.CONN}` en los informes HTML. Actualizado `zabbix_api.py` para incluir estas macros en `resolve_macros()` y `COMMON_MACROS`.
 - **UnboundLocalError en `get_events_history()`**: Corregido error `cannot access local variable 'final_events' where it is not associated with a value` en `zabbix_api.py:646`. La variable `final_events` solo se definía dentro del bloque `if filtered_events:`, causando fallo cuando no había eventos filtrados. Solucionado inicializando `final_events = []` antes del bloque condicional.
 - **Filtrado de estado host/trigger (string vs integer)**: La API de Zabbix devuelve los campos `status` como strings ("0"/"1") no enteros. El filtrado `h.get("status") == 0` fallaba silenciosamente. Corregido en 4 ubicaciones usando `str(h.get("status", "0")) == "0"` para manejar ambos tipos y default a habilitado.
 - **Triggers deshabilitados en tabla "Alertas Activas"**: El método `get_active_problems_raw()` solo filtraba por estado de host, NO por estado de trigger. Añadido filtrado de `trigger.status = 0` consultando `trigger.get` con los `objectid` (triggerids) de los problemas.

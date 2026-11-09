@@ -360,6 +360,8 @@ Desarrollar una aplicación en Python 3 para entorno local (con vista a empaquet
   - `get_active_alerts()` (trigger.get - legacy)
 
 #### 🔧 **Resolución Manual de Macros de Zabbix**
+Se ha implementado el método `resolve_macros()` en `ZabbixAPI` para resolver macros comunes (`{HOST.NAME}`, `{ITEM.VALUE}`, `{TRIGGER.NAME}`, `{EVENT.TIME}`, etc.).
+*Actualización (Versión 0.18.0):* Se han añadido `{ITEM.VALUE1}` y `{HOST.CONN}` para garantizar la consistencia total entre la salida por consola y el informe HTML generado.
 - **Implementación**: Nuevo método `resolve_macros()` en la clase `ZabbixAPI` (`zabbix_api.py`).
 - **Funcionalidad**: Resuelve macros comunes de Zabbix en textos (nombres de problemas, descripciones de triggers, nombres de eventos):
   - **Macros de Host**: `{HOST.NAME}`, `{HOST.HOST}`, `{HOST.IP}`, `{HOST.DNS}`, `{HOST.CONN}`, `{HOST.PORT}`
