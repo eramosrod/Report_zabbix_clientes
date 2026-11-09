@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
 Módulo de generación de informes para Zabbix.
-Fase 9: Histórico tipo Top Triggers con event.get (agrupado por Host + Trigger Name).
-Fase 10: Gestión multi-cliente mediante archivo de configuración externo (clients.json) y almacenamiento local de logotipos.
+Fase 12: Corrección error expandDescription, resolución de macros y filtrado de triggers/hosts deshabilitados.
 """
 
 from typing import List, Dict, Any, Optional
@@ -622,8 +621,8 @@ class ReportGenerator:
         return '''
     </div>
     <div class="footer">
-        <p>Informe generado automáticamente por Generador de Informes Zabbix v0.15.0</p>
-        <p>Fase 10 - Gestión multi-cliente mediante clients.json y almacenamiento local de logotipos</p>
+        <p>Informe generado automáticamente por Generador de Informes Zabbix v0.17.0</p>
+        <p>Fase 12 - Corrección expandDescription, resolución macros, filtrado triggers/hosts deshabilitados</p>
     </div>
 </body>
 </html>'''
@@ -832,8 +831,8 @@ class ReportGenerator:
     def _print_footer_console(self) -> None:
         """Imprime el pie del informe en consola."""
         print("  " + "=" * 100)
-        print("  Informe generado automáticamente por Generador de Informes Zabbix v0.15.0")
-        print("  Fase 10 - Gestión multi-cliente mediante clients.json y almacenamiento local de logotipos")
+        print("  Informe generado automáticamente por Generador de Informes Zabbix v0.17.0")
+        print("  Fase 12 - Corrección expandDescription, resolución macros, filtrado triggers/hosts deshabilitados")
         print("  " + "=" * 100 + "\n")
 
 

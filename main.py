@@ -12,6 +12,7 @@ Fase 9.5: Paleta de colores oficial Zabbix y estados visuales de entornos.
 Fase 9.6: Separación de fuentes de datos - Alertas Activas sin filtro temporal, Resumen y Entornos con filtro.
 Fase 9.7: Simplificación tabla Entornos en HTML - 2 columnas (Nombre, Problemas) con colores dinámicos rojo/verde.
 Fase 10: Gestión multi-cliente mediante archivo de configuración externo (clients.json) y almacenamiento local de logotipos.
+Fase 12: Corrección error expandDescription, resolución de macros y filtrado de triggers/hosts deshabilitados.
 """
 
 import sys
@@ -93,7 +94,7 @@ def parse_time(time_str):
 
 def parse_args():
     """Parsea los argumentos de línea de comandos."""
-    parser = argparse.ArgumentParser(description='Generador de Informes Zabbix - Fase 10')
+    parser = argparse.ArgumentParser(description='Generador de Informes Zabbix - Fase 12')
     parser.add_argument('--client', '-c', metavar='NOMBRE', help='Nombre del cliente (definido en clients.json)')
     parser.add_argument('--html', '-H', metavar='ARCHIVO', help='Guardar informe en archivo HTML')
     parser.add_argument('--no-console', '-n', action='store_true', help='No mostrar informe en consola')
@@ -105,7 +106,7 @@ def parse_args():
 
 
 def main():
-    """Función principal del programa - Fase 10: Gestión multi-cliente."""
+    """Función principal del programa - Fase 12: Corrección expandDescription, macros y filtrado."""
     args = parse_args()
     
     # Variables para datos del cliente
@@ -243,7 +244,7 @@ def main():
             print("\n💡 Usa --html archivo.html para guardar el informe en formato HTML")
         
         print()
-        print("✓ Fase 10 completada correctamente - Gestión multi-cliente con clients.json y logotipos locales.")
+        print("✓ Fase 12 completada correctamente - Corrección expandDescription, resolución macros, filtrado triggers/hosts deshabilitados.")
         
     except KeyboardInterrupt:
         print("\n\nOperación cancelada por el usuario.")

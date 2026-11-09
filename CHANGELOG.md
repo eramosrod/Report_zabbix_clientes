@@ -2,6 +2,46 @@
 
 Todos los cambios notables en este proyecto serán documentados en este archivo.
 
+## [0.18.0] - 2026-11-09
+
+### Corregido
+- **UnboundLocalError en `get_events_history()`**: Corregido error `cannot access local variable 'final_events' where it is not associated with a value` en `zabbix_api.py:646`. La variable `final_events` solo se definía dentro del bloque `if filtered_events:`, causando fallo cuando no había eventos filtrados. Solucionado inicializando `final_events = []` antes del bloque condicional.
+- **Filtrado de estado host/trigger (string vs integer)**: La API de Zabbix devuelve los campos `status` como strings ("0"/"1") no enteros. El filtrado `h.get("status") == 0` fallaba silenciosamente. Corregido en 4 ubicaciones usando `str(h.get("status", "0")) == "0"` para manejar ambos tipos y default a habilitado.
+- **Triggers deshabilitados en tabla "Alertas Activas"**: El método `get_active_problems_raw()` solo filtraba por estado de host, NO por estado de trigger. Añadido filtrado de `trigger.status = 0` consultando `trigger.get` con los `objectid` (triggerids) de los problemas.
+- **Falta de `objectid` en `problem.get`**: La consulta `problem.get` no devolvía `objectid` por defecto, impidiendo obtener el triggerid para filtrar. Añadido `"objectid"` al parámetro `output` en `get_active_problems_raw()`.
+
+### Cambiado
+- **`zabbix_api.py`**:
+  - `get_events_history()`: Inicializada `final_events = []` antes del bloque `if filtered_events:` (línea ~695).
+  - `get_active_problems()`: Filtrado host/trigger usando `str(status) == "0"` (líneas ~259, ~289).
+  - `get_active_problems_raw()`: Añadido `"objectid"` a `output` (línea ~406) + filtrado de triggers deshabilitados (líneas ~468-501).
+  - `get_problems_history()`: Filtrado host/trigger usando `str(status) == "0"` (líneas ~589, ~605).
+  - `get_events_history()`: Filtrado host/trigger usando `str(status) == "0"` (líneas ~690, ~708).
+  - Eliminados todos los `print(f"DEBUG: ...")` de depuración del código de producción.
+- **Versión**: Incrementada a 0.18.0 para reflejar las correcciones críticas de filtrado y el bug UnboundLocalError.
+
+## [0.17.0] - 2026-11-09
+
+### Corregido
+- **Error API Zabbix: Invalid parameter "expandDescription"**: Eliminado el parámetro `expandDescription` de todas las consultas `event.get`, `problem.get` y `trigger.get` en `zabbix_api.py`, ya que no es un parámetro válido en versiones recientes de Zabbix (6.0+). Este error causaba el fallo: `Invalid params. - Invalid parameter "/": unexpected parameter "expandDescription"`.
+
+### Añadido
+- **Resolución manual de macros de Zabbix**: Implementado método `resolve_macros()` en `ZabbixAPI` para resolver macros comunes (`{HOST.NAME}`, `{ITEM.VALUE}`, `{TRIGGER.NAME}`, `{EVENT.TIME}`, etc.) en nombres de problemas, descripciones de triggers y nombres de eventos. Las macros ahora se resuelven correctamente en el informe HTML y consola.
+- **Filtrado de triggers deshabilitados**: Añadido filtrado por `trigger.status = 0` (habilitado) en `get_active_problems()`, `get_active_problems_raw()`, `get_problems_history()` y `get_events_history()`. Ahora se excluyen alertas de triggers deshabilitados (status=1) además de hosts deshabilitados.
+- **Filtrado mejorado de hosts deshabilitados**: Reforzado el filtrado por `host.status = 0` en todas las consultas de problemas y eventos.
+
+### Cambiado
+- **`zabbix_api.py`**:
+  - Eliminado `expandDescription` de `get_active_problems()`, `get_active_problems_raw()`, `get_problems_history()`, `get_events_history()` y `get_active_alerts()` (legacy).
+  - Añadido método `resolve_macros()` para resolución manual de macros de Zabbix.
+  - Añadido diccionario `COMMON_MACROS` con macros soportadas.
+  - Modificado `get_events_history()` para consultar `trigger.get` con campo `status` y filtrar triggers deshabilitados.
+  - Modificado `get_active_problems()`, `get_active_problems_raw()` y `get_problems_history()` para consultar `trigger.get` y filtrar por `trigger.status = 0`.
+- **`data_collector.py`**:
+  - Actualizado `_enrich_events()` para usar `resolve_macros()` en descripciones de triggers.
+  - Actualizado `_enrich_problems()` para usar `resolve_macros()` en nombres de problemas.
+- **Versión**: Incrementada a 0.17.0 para reflejar la corrección crítica del error `expandDescription`, resolución de macros y filtrado de triggers/hosts deshabilitados.
+
 ## [0.16.0] - 2026-11-08
 
 ### Añadido

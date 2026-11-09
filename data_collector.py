@@ -149,18 +149,41 @@ class DataCollector:
         now = datetime.now().timestamp()
         
         for event in raw_events:
-            # Obtener nombre del host (del campo hosts[])
+            # Obtener información del host (del campo hosts[])
+            host_info = {}
             host_name = "Desconocido"
             if event.get("hosts") and len(event["hosts"]) > 0:
-                host_name = event["hosts"][0].get("name", "Desconocido")
+                host = event["hosts"][0]
+                host_name = host.get("name", "Desconocido")
+                host_info = {
+                    'name': host.get('name', ''),
+                    'host': host.get('host', ''),
+                    'ip': host.get('ip', ''),
+                    'dns': host.get('dns', ''),
+                    'port': host.get('port', ''),
+                }
             
             # Obtener información del trigger (del campo triggers[])
+            trigger_info = {}
             trigger_description = "Sin descripción"
             trigger_priority = 0
             if event.get("triggers") and len(event["triggers"]) > 0:
                 trigger = event["triggers"][0]
                 trigger_description = trigger.get("description", "Sin descripción")
                 trigger_priority = int(trigger.get("priority", 0))
+                trigger_info = {
+                    'description': trigger.get('description', ''),
+                    'priority': trigger.get('priority', 0),
+                    'status': trigger.get('status', 0),
+                    'url': trigger.get('url', ''),
+                }
+            
+            # Resolver macros en la descripción del trigger
+            resolved_description = self.zabbix.resolve_macros(
+                trigger_description,
+                host_info=host_info,
+                trigger_info=trigger_info
+            )
             
             # Convertir severidad numérica a texto (usando priority del trigger)
             severity_text = self.zabbix.SEVERITY_MAP.get(trigger_priority, f"Desconocido ({trigger_priority})")
@@ -183,12 +206,12 @@ class DataCollector:
                 "host": host_name,
                 "severity": severity_text,
                 "severity_num": trigger_priority,
-                "description": trigger_description,  # Nombre del trigger
+                "description": resolved_description,  # Nombre del trigger con macros resueltas
                 "duration": duration_str,
                 "duration_seconds": duration_seconds,
                 "clock": clock,
                 "status": status,
-                "trigger_description": trigger_description,
+                "trigger_description": resolved_description,
                 "trigger_priority": trigger_priority
             })
         
@@ -208,14 +231,31 @@ class DataCollector:
         now = datetime.now().timestamp()
         
         for problem in raw_problems:
-            # Obtener nombre del host (puede haber múltiples, tomar el primero)
+            # Obtener información del host (puede haber múltiples, tomar el primero)
             # NOTA: problem.get no devuelve 'hosts' en algunas versiones de Zabbix
+            host_info = {}
             host_name = "Desconocido"
             if problem.get("hosts") and len(problem["hosts"]) > 0:
-                host_name = problem["hosts"][0].get("name", "Desconocido")
+                host = problem["hosts"][0]
+                host_name = host.get("name", "Desconocido")
+                host_info = {
+                    'name': host.get('name', ''),
+                    'host': host.get('host', ''),
+                    'ip': host.get('ip', ''),
+                    'dns': host.get('dns', ''),
+                    'port': host.get('port', ''),
+                }
             elif problem.get("host") and problem["host"].get("name"):
                 # Algunas versiones pueden devolver host directamente
-                host_name = problem["host"]["name"]
+                host = problem["host"]
+                host_name = host.get("name", "Desconocido")
+                host_info = {
+                    'name': host.get('name', ''),
+                    'host': host.get('host', ''),
+                    'ip': host.get('ip', ''),
+                    'dns': host.get('dns', ''),
+                    'port': host.get('port', ''),
+                }
             
             # Convertir severidad numérica a texto
             severity_num = int(problem.get("severity", 0))
@@ -247,13 +287,26 @@ class DataCollector:
                 for tag in problem["tags"]:
                     tags[tag.get("tag", "")] = tag.get("value", "")
             
+            # Resolver macros en el nombre del problema
+            problem_name = problem.get("name", "Sin descripción")
+            resolved_name = self.zabbix.resolve_macros(
+                problem_name,
+                host_info=host_info,
+                event_info={
+                    'eventid': problem.get('eventid'),
+                    'clock': clock,
+                    'name': problem_name,
+                    'value': problem.get('value', 1),
+                }
+            )
+            
             enriched_problems.append({
                 "eventid": problem.get("eventid"),
                 "time": time_str,
                 "host": host_name,
                 "severity": severity_text,
                 "severity_num": severity_num,
-                "description": problem.get("name", "Sin descripción"),
+                "description": resolved_name,  # Nombre del problema con macros resueltas
                 "duration": duration_str,
                 "duration_seconds": duration_seconds,
                 "clock": clock,

@@ -40,7 +40,7 @@ Desarrollar una aplicación en Python 3 para entorno local (con vista a empaquet
   - Vista de consola formateada con tablas alineadas y separadores.
 - `requirements.txt`: Dependencias del proyecto (requests).
 
-## 4. Estado Actual - Versión 0.14.0 (Fase 9.7 Completada)
+## 4. Estado Actual - Versión 0.17.0 (Fase 12 Completada)
 ### ✅ Implementado
 - **Estructura base del proyecto** creada con `requirements.txt` (requests>=2.31.0).
 - **Módulo de autenticación** en `main.py`:
@@ -346,6 +346,90 @@ Desarrollar una aplicación en Python 3 para entorno local (con vista a empaquet
     - Método `_print_banner()`: Sin cambios (consola mantiene formato completo).
     - Método `_get_html_footer()` y `_print_footer_console()`: Versión actualizada a 0.15.0.
   - **Resultado**: El informe HTML ahora presenta una cabecera limpia y minimalista, mientras que la consola mantiene toda su información detallada para análisis completo.
+
+### 🆕 **NUEVO en Fase 12 - Corrección Error expandDescription, Resolución de Macros y Filtrado de Triggers/Hosts Deshabilitados (Versión 0.17.0)**
+
+#### 🐛 **Corrección Crítica: Error API Zabbix "expandDescription"**
+- **Problema**: Al ejecutar `main.py`, la API de Zabbix devolvía el error: `Error API Zabbix: Invalid params. - Invalid parameter "/": unexpected parameter "expandDescription"`.
+- **Causa**: El parámetro `expandDescription` ya no es válido en las consultas `event.get`, `problem.get` y `trigger.get` en versiones recientes de Zabbix (6.0+).
+- **Solución**: Eliminado el parámetro `expandDescription` de todas las consultas API en `zabbix_api.py`:
+  - `get_active_problems()` (event.get)
+  - `get_active_problems_raw()` (problem.get)
+  - `get_problems_history()` (problem.get)
+  - `get_events_history()` (event.get + trigger.get)
+  - `get_active_alerts()` (trigger.get - legacy)
+
+#### 🔧 **Resolución Manual de Macros de Zabbix**
+- **Implementación**: Nuevo método `resolve_macros()` en la clase `ZabbixAPI` (`zabbix_api.py`).
+- **Funcionalidad**: Resuelve macros comunes de Zabbix en textos (nombres de problemas, descripciones de triggers, nombres de eventos):
+  - **Macros de Host**: `{HOST.NAME}`, `{HOST.HOST}`, `{HOST.IP}`, `{HOST.DNS}`, `{HOST.CONN}`, `{HOST.PORT}`
+  - **Macros de Trigger**: `{TRIGGER.NAME}`, `{TRIGGER.DESCRIPTION}`, `{TRIGGER.STATUS}`, `{TRIGGER.SEVERITY}`, `{TRIGGER.PRIORITY}`, `{TRIGGER.URL}`
+  - **Macros de Item**: `{ITEM.NAME}`, `{ITEM.KEY}`, `{ITEM.VALUE}`, `{ITEM.LASTVALUE}`
+  - **Macros de Evento**: `{EVENT.ID}`, `{EVENT.NAME}`, `{EVENT.OPDATA}`, `{EVENT.VALUE}`, `{EVENT.STATUS}`, `{EVENT.TIME}`, `{EVENT.DATE}`
+- **Integración**:
+  - `_enrich_events()` en `data_collector.py` usa `resolve_macros()` para descripciones de triggers.
+  - `_enrich_problems()` en `data_collector.py` usa `resolve_macros()` para nombres de problemas.
+- **Resultado**: Los nombres de alertas/problemas en el informe HTML y consola ahora muestran valores reales en lugar de macros sin resolver (ej. `{HOST.NAME}` → "Servidor-Web-01").
+
+#### 🚫 **Filtrado de Triggers y Hosts Deshabilitados**
+- **Filtrado de Hosts (ya existente, reforzado)**: Se mantiene y refuerza el filtrado por `host.status = 0` (habilitado) en todas las consultas. Los problemas de hosts deshabilitados (status=1) se excluyen.
+- **Filtrado de Triggers (NUEVO)**: Añadido filtrado por `trigger.status = 0` (habilitado) en:
+  - `get_active_problems()`: Consulta adicional a `trigger.get` para obtener status y filtrar.
+  - `get_active_problems_raw()`: Consulta adicional a `trigger.get` para obtener status y filtrar.
+  - `get_problems_history()`: Consulta adicional a `trigger.get` para obtener status y filtrar.
+  - `get_events_history()`: La consulta a `trigger.get` ya incluye `status` y se filtra en el mapeo.
+- **Resultado**: El panel de alertas activas y el resumen histórico ahora excluyen correctamente cualquier trigger deshabilitado (status=1) o que pertenezca a un host deshabilitado (status=1).
+
+#### 📝 **Archivos Modificados**
+- **`zabbix_api.py`**:
+  - Eliminado `expandDescription` de todos los parámetros de consultas API.
+  - Añadido método `resolve_macros()` con soporte para macros comunes de Zabbix.
+  - Añadido diccionario `COMMON_MACROS` de referencia.
+  - Modificadas `get_active_problems()`, `get_active_problems_raw()`, `get_problems_history()`, `get_events_history()` para filtrar triggers deshabilitados.
+- **`data_collector.py`**:
+  - Actualizado `_enrich_events()` para resolver macros en `trigger_description`.
+  - Actualizado `_enrich_problems()` para resolver macros en `name` del problema.
+- **`CHANGELOG.md`**: Registrada versión 0.17.0 con detalles de correcciones y nuevas funcionalidades.
+
+### 🆕 **NUEVO en Fase 13 - Corrección UnboundLocalError, Filtrado String/Integer y Triggers Deshabilitados en Alertas Activas (Versión 0.18.0)**
+
+#### 🐛 **Corrección Crítica: UnboundLocalError en `get_events_history()`**
+- **Problema**: Error `UnboundLocalError: cannot access local variable 'final_events' where it is not associated with a value` en `zabbix_api.py:646`.
+- **Causa**: La variable `final_events` solo se definía dentro del bloque `if filtered_events:`, causando fallo cuando no había eventos filtrados (lista vacía).
+- **Solución**: Inicializada `final_events = []` antes del bloque condicional `if filtered_events:`.
+
+#### 🔧 **Corrección de Filtrado: String vs Integer en campos `status`**
+- **Problema**: La API de Zabbix devuelve los campos `status` (host y trigger) como **strings** ("0"/"1"), no enteros. El filtrado `h.get("status") == 0` fallaba silenciosamente (comparación string vs int), permitiendo que hosts/triggers deshabilitados pasaran el filtro.
+- **Solución**: Corregido en **4 ubicaciones** usando `str(h.get("status", "0")) == "0"` para manejar ambos tipos y default a habilitado:
+  1. `get_active_problems()` - líneas ~259, ~289
+  2. `get_active_problems_raw()` - líneas ~460, ~488
+  3. `get_problems_history()` - líneas ~589, ~605
+  4. `get_events_history()` - líneas ~690, ~708
+
+#### 🚫 **Filtrado de Triggers Deshabilitados en `get_active_problems_raw()` (Tabla "Alertas Activas")**
+- **Problema**: El método `get_active_problems_raw()` (usado para la tabla "Alertas Activas") solo filtraba por estado de host, **NO por estado de trigger**. Los triggers deshabilitados (status=1) aparecían en el informe.
+- **Causa Raíz Adicional**: La consulta `problem.get` no devolvía `objectid` (triggerid) por defecto, impidiendo consultar `trigger.get` para obtener el status.
+- **Solución**:
+  1. Añadido `"objectid"` al parámetro `output` en `problem.get` (línea ~406).
+  2. Implementado filtrado de triggers deshabilitados consultando `trigger.get` con los `objectid` obtenidos (líneas ~468-501).
+- **Verificación**: Debug confirmó filtrado correcto:
+  - Trigger 32671 (status='1' deshabilitado) → **FILTRADO**
+  - Trigger 32758 (status='0' habilitado) → **MANTENIDO**
+  - Resultado: Informe muestra "1 alertas activas actuales" en lugar de 2.
+
+#### 🧹 **Limpieza de Código de Producción**
+- Eliminados todos los `print(f"DEBUG: ...")` de depuración añadidos durante la investigación del bug.
+
+#### 📝 **Archivos Modificados**
+- **`zabbix_api.py`**:
+  - `get_events_history()`: Inicializada `final_events = []` antes del bloque `if filtered_events:`.
+  - `get_active_problems()`: Filtrado host/trigger usando `str(status) == "0"`.
+  - `get_active_problems_raw()`: Añadido `"objectid"` a `output` + filtrado de triggers deshabilitados.
+  - `get_problems_history()`: Filtrado host/trigger usando `str(status) == "0"`.
+  - `get_events_history()`: Filtrado host/trigger usando `str(status) == "0"`.
+  - Eliminados todos los `print(f"DEBUG: ...")` de depuración.
+- **`CHANGELOG.md`**: Registrada versión 0.18.0 con detalles de correcciones.
+- **`MEMORIA.md`**: Actualizada con documentación técnica de la Fase 13.
 
 ### 🔄 Próximos Pasos (Fase 9+)
 - Exportación a CSV/Excel.
