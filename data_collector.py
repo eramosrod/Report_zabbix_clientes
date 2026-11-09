@@ -9,6 +9,11 @@ from datetime import datetime
 from collections import defaultdict
 from zabbix_api import ZabbixAPI
 
+# Configurar logging de depuración
+import logging
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
 
 class DataCollector:
     """
@@ -291,11 +296,21 @@ class DataCollector:
                 # Por ahora dejamos vacío o usamos el clock del problema si no hay más info
                 recovery_time = 'Resuelto'
             
-            # Extraer tags
-            tags = {}
+            # Extraer tags - preservar todos los tags, incluyendo múltiples __zbx_glpi_link
+            # Usamos una lista de diccionarios para no perder tags duplicados
+            tags_list = []
+            tags_dict = {}  # Para compatibilidad hacia atrás (último valor de cada tag)
             if problem.get("tags"):
                 for tag in problem["tags"]:
-                    tags[tag.get("tag", "")] = tag.get("value", "")
+                    tag_name = tag.get("tag", "")
+                    tag_value = tag.get("value", "")
+                    tags_list.append({"tag": tag_name, "value": tag_value})
+                    tags_dict[tag_name] = tag_value  # Último valor para compatibilidad
+            
+            # DEBUG: Contar tags __zbx_glpi_link
+            glpi_tag_count = sum(1 for t in tags_list if t.get("tag") == "__zbx_glpi_link")
+            if glpi_tag_count > 0:
+                logger.debug(f"Problem {problem.get('eventid')} has {glpi_tag_count} __zbx_glpi_link tag(s)")
             
             # Resolver macros en el nombre del problema
             problem_name = problem.get("name", "Sin descripción")
@@ -335,7 +350,8 @@ class DataCollector:
                 "status": status,
                 "is_resolved": is_resolved,
                 "recovery_time": recovery_time,
-                "tags": tags,
+                "tags": tags_dict,  # Usar el diccionario para compatibilidad
+                "tags_list": tags_list,  # Preservar la lista completa para depuración
                 "r_eventid": problem.get("r_eventid")
             })
         
@@ -573,7 +589,7 @@ class DataCollector:
         Extrae los enlaces GLPI de los problemas que tengan el tag '__zbx_glpi_link'.
         
         Args:
-            problems: Lista de problemas enriquecidos (con campo 'tags')
+            problems: Lista de problemas enriquecidos (con campos 'tags' y 'tags_list')
             
         Returns:
             Lista de diccionarios con ticket_id, title, url, status
@@ -581,38 +597,55 @@ class DataCollector:
         glpi_links = []
         
         for problem in problems:
-            tags = problem.get('tags', {})
-            glpi_link = tags.get('__zbx_glpi_link', '')
+            # Usar tags_list para detectar múltiples __zbx_glpi_link
+            tags_list = problem.get('tags_list', [])
+            glpi_links_found = []
             
-            if glpi_link:
-                # El valor del tag puede ser una URL completa o un ID de ticket
-                # Intentar extraer ticket_id si es una URL de GLPI
-                ticket_id = glpi_link
-                title = problem.get('description', 'Sin descripción')
-                url = glpi_link
-                status = 'Abierto' if not problem.get('is_resolved', False) else 'Resuelto'
-                
-                # Si es una URL, intentar extraer el ID del ticket
-                if glpi_link.startswith('http'):
-                    # Patrones comunes: /front/ticket.form.php?id=123 o /tickets/123
-                    import re
-                    match = re.search(r'[?&]id=(\d+)', glpi_link)
-                    if match:
-                        ticket_id = match.group(1)
-                    else:
-                        match = re.search(r'/tickets?/(\d+)', glpi_link)
+            # Recorrer TODOS los tags para encontrar __zbx_glpi_link
+            for tag in tags_list:
+                if tag.get("tag") == "__zbx_glpi_link":
+                    glpi_link = tag.get("value", "")
+                    glpi_links_found.append(glpi_link)
+            
+            # DEBUG: Contar GLPI links encontrados
+            logger.debug(f"Problem {problem.get('eventid')} has {len(glpi_links_found)} __zbx_glpi_link tag(s)")
+            
+            # Para cada __zbx_glpi_link encontrado, crear un enlace GLPI
+            for glpi_link in glpi_links_found:
+                if glpi_link:
+                    # El valor del tag puede ser una URL completa o un ID de ticket
+                    # Intentar extraer ticket_id si es una URL de GLPI
+                    ticket_id = glpi_link
+                    title = problem.get('description', 'Sin descripción')
+                    url = glpi_link
+                    status = 'Abierto' if not problem.get('is_resolved', False) else 'Resuelto'
+                    
+                    # Si es una URL, intentar extraer el ID del ticket
+                    if glpi_link.startswith('http'):
+                        # Patrones comunes: /front/ticket.form.php?id=123 o /tickets/123
+                        import re
+                        match = re.search(r'[?&]id=(\d+)', glpi_link)
                         if match:
                             ticket_id = match.group(1)
-                
-                glpi_links.append({
-                    'ticket_id': ticket_id,
-                    'title': title,
-                    'url': url,
-                    'status': status,
-                    'host': problem.get('host', 'Desconocido'),
-                    'severity': problem.get('severity', 'Not classified'),
-                    'eventid': problem.get('eventid')
-                })
+                        else:
+                            match = re.search(r'/tickets?/(\d+)', glpi_link)
+                            if match:
+                                ticket_id = match.group(1)
+                    
+                    glpi_links.append({
+                        'ticket_id': ticket_id,
+                        'title': title,
+                        'url': url,
+                        'status': status,
+                        'host': problem.get('host', 'Desconocido'),
+                        'severity': problem.get('severity', 'Not classified'),
+                        'eventid': problem.get('eventid')
+                    })
+        
+        # DEBUG: Resumen final de GLPI links
+        total_glpi_links = len(glpi_links)
+        problems_with_glpi = len(set(link['eventid'] for link in glpi_links))
+        logger.info(f"GLPI Summary: {total_glpi_links} total GLPI links found across {problems_with_glpi} problems")
         
         return glpi_links
     
@@ -680,6 +713,11 @@ class DataCollector:
         # Obtener SOLO problemas activos actuales - SIN filtro temporal (para tabla de Alertas Activas)
         active_problems = self.get_active_problems()
         
+        # DEBUG: Contar elementos en cada fase
+        logger.info(f"DEBUG COUNTS - Raw problems from API: {len(all_problems_history)}")
+        logger.info(f"DEBUG COUNTS - Raw events from API: {len(all_events_history)}")
+        logger.info(f"DEBUG COUNTS - Active problems (no time filter): {len(active_problems)}")
+        
         # Formatear para las diferentes tablas
         # Resumen de Alertas: usar eventos (event.get) para replicar Top Triggers - agrupado por Host + Trigger Name
         alerts_summary_data = self.format_events_for_summary_table(all_events_history)
@@ -688,6 +726,9 @@ class DataCollector:
         
         # Extraer enlaces GLPI del histórico de problemas (CON filtro temporal)
         glpi_links = self.get_glpi_links(all_problems_history)
+        
+        # DEBUG: Contar GLPI links en el informe final
+        logger.info(f"DEBUG COUNTS - GLPI links in final report: {len(glpi_links)}")
         
         # Calcular totales globales
         total_problems = len(all_problems_history)

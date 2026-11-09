@@ -7,8 +7,13 @@ Separado para evitar importaciones circulares.
 import requests
 import json
 import time
+import logging
 from datetime import datetime
 from typing import List, Dict, Any, Optional
+
+# Configurar logging de depuración
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 
 class ZabbixAPI:
@@ -412,7 +417,28 @@ class ZabbixAPI:
         if time_till:
             params["time_till"] = time_till
 
-        problems = self._make_request("problem.get", params)
+        # Manejar paginación para obtener todos los resultados
+        all_problems = []
+        limit = 10000  # Límite por petición
+        params["limit"] = limit
+        
+        while True:
+            batch = self._make_request("problem.get", params)
+            logger.debug(f"problem.get returned {len(batch)} problems (total so far: {len(all_problems)})")
+            if not batch:
+                break
+            all_problems.extend(batch)
+            if len(batch) < limit:
+                break
+            # Para la siguiente página, usar el último eventid como offset
+            # Zabbix API usa 'search' o 'offset' para paginación
+            # Usamos el último eventid para continuar
+            last_eventid = batch[-1]["eventid"]
+            params["search"] = {"eventid": last_eventid}
+            # Nota: problem.get no soporta offset directamente, usamos search
+        
+        problems = all_problems
+        logger.info(f"Total raw problems from problem.get: {len(problems)}")
         
         # Obtener información de hosts usando event.get con los eventids
         # event.get SÍ soporta selectHosts
@@ -460,6 +486,8 @@ class ZabbixAPI:
             if host_enabled:
                 host_filtered.append(problem)
         
+        logger.info(f"Problems after host filter: {len(host_filtered)} (removed {len(problems) - len(host_filtered)})")
+        
         # Filtrar problemas de triggers deshabilitados
         # Obtener triggerids de los problemas filtrados por host
         if host_filtered:
@@ -495,6 +523,7 @@ class ZabbixAPI:
         else:
             filtered_problems = []
         
+        logger.info(f"Final filtered problems: {len(filtered_problems)} (removed {len(host_filtered) - len(filtered_problems)} disabled triggers)")
         return filtered_problems
 
     def get_problems_history(self, time_from: int = None, time_till: int = None, limit: int = 10000) -> List[Dict[str, Any]]:
@@ -505,6 +534,14 @@ class ZabbixAPI:
         NOTA: problem.get no soporta selectHosts en algunas versiones de Zabbix.
         Para obtener los nombres de hosts, hacemos una segunda consulta con event.get
         usando los eventids obtenidos.
+        
+        IMPORTANTE: El parámetro time_from en problem.get filtra por clock (creación del problema).
+        Para obtener TODOS los problemas que estuvieron activos en el rango [time_from, time_till],
+        incluyendo los que se abrieron antes pero siguen activos o se cerraron dentro del rango,
+        usamos una estrategia en dos fases:
+        1. Obtener problemas con clock >= time_from (creados en el rango)
+        2. Obtener problemas activos actuales (sin time_from) y filtrar los que tienen clock < time_from
+           pero que están activos o se resolvieron dentro del rango (r_eventid clock <= time_till)
         
         Args:
             time_from: Timestamp de inicio (opcional, por defecto últimos 30 días)
@@ -523,14 +560,10 @@ class ZabbixAPI:
         if time_till is None:
             time_till = int(datetime.now().timestamp())
 
-        # Paso 1: Obtener problemas históricos con problem.get (incluye r_eventid para resueltos)
-        # problem.get NO soporta selectHosts en algunas versiones
-        # Añadimos 'limit' para asegurar que se obtenga el histórico completo (evita límite por defecto de la API)
-        # No usamos 'recent' para no filtrar solo problemas recientes
-        # NOTA: expandDescription NO es válido en problem.get en versiones recientes de Zabbix
-        # Las macros se resolverán manualmente si es necesario
+        # FASE 1: Obtener problemas creados DENTRO del rango [time_from, time_till]
+        # problem.get con time_from/time_till filtra por clock (creación)
         params = {
-            "output": ["eventid", "name", "severity", "clock", "ns"],
+            "output": ["eventid", "name", "severity", "clock", "ns", "r_eventid"],
             "selectTags": ["tag", "value"],
             "selectSuppressionData": ["suppress_until"],
             "time_from": time_from,
@@ -540,7 +573,97 @@ class ZabbixAPI:
             "sortorder": "DESC"
         }
 
-        problems = self._make_request("problem.get", params)
+        # Manejar paginación para obtener todos los resultados
+        all_problems = []
+        batch_limit = 10000  # Límite por petición
+        params["limit"] = batch_limit
+        
+        while True:
+            batch = self._make_request("problem.get", params)
+            logger.debug(f"problem.get (history phase 1) returned {len(batch)} problems (total so far: {len(all_problems)})")
+            if not batch:
+                break
+            all_problems.extend(batch)
+            if len(batch) < batch_limit:
+                break
+            last_eventid = batch[-1]["eventid"]
+            params["search"] = {"eventid": last_eventid}
+        
+        phase1_problems = all_problems
+        logger.info(f"Phase 1 - Problems created in range [{time_from}, {time_till}]: {len(phase1_problems)}")
+
+        # FASE 2: Obtener problemas ACTIVOS ACTUALES (sin filtro temporal)
+        # para capturar los que se abrieron ANTES de time_from pero siguen activos
+        # o se resolvieron DENTRO del rango (r_eventid clock <= time_till)
+        active_params = {
+            "output": ["eventid", "name", "severity", "clock", "ns", "r_eventid"],
+            "selectTags": ["tag", "value"],
+            "selectSuppressionData": ["suppress_until"],
+            "limit": limit,
+            "sortfield": "eventid",
+            "sortorder": "DESC"
+        }
+        
+        all_active = []
+        active_params["limit"] = batch_limit
+        
+        while True:
+            batch = self._make_request("problem.get", active_params)
+            logger.debug(f"problem.get (active for phase 2) returned {len(batch)} problems (total so far: {len(all_active)})")
+            if not batch:
+                break
+            all_active.extend(batch)
+            if len(batch) < batch_limit:
+                break
+            last_eventid = batch[-1]["eventid"]
+            active_params["search"] = {"eventid": last_eventid}
+        
+        logger.info(f"Phase 2 - Total active problems from API: {len(all_active)}")
+        
+        # Filtrar problemas activos que:
+        # - Se crearon ANTES de time_from (clock < time_from)
+        # - Y están activos (sin r_eventid) O se resolvieron DENTRO del rango (r_eventid existe y su clock <= time_till)
+        # Para saber el clock de resolución, necesitamos consultar event.get con los r_eventid
+        phase2_candidates = [p for p in all_active if int(p.get("clock", 0)) < time_from]
+        logger.info(f"Phase 2 - Candidates opened before time_from: {len(phase2_candidates)}")
+        
+        # Obtener clocks de resolución para los que tienen r_eventid
+        resolved_in_range = []
+        if phase2_candidates:
+            r_eventids = [p["r_eventid"] for p in phase2_candidates if p.get("r_eventid")]
+            if r_eventids:
+                # Consultar event.get para obtener el clock de los eventos de resolución
+                # Hacer en lotes
+                batch_size = 500
+                resolution_clocks = {}
+                for i in range(0, len(r_eventids), batch_size):
+                    batch = r_eventids[i:i + batch_size]
+                    events = self._make_request("event.get", {
+                        "eventids": batch,
+                        "output": ["eventid", "clock"]
+                    })
+                    for e in events:
+                        resolution_clocks[e["eventid"]] = int(e.get("clock", 0))
+                
+                for problem in phase2_candidates:
+                    r_eventid = problem.get("r_eventid")
+                    if r_eventid:
+                        # Problema resuelto: verificar si se resolvió dentro del rango
+                        resolution_clock = resolution_clocks.get(r_eventid, 0)
+                        if resolution_clock <= time_till:
+                            resolved_in_range.append(problem)
+                    else:
+                        # Problema activo actualmente (sin r_eventid) - incluirlo
+                        resolved_in_range.append(problem)
+        
+        logger.info(f"Phase 2 - Problems to add (active or resolved in range): {len(resolved_in_range)}")
+        
+        # Combinar: problemas de fase 1 + problemas de fase 2 (evitando duplicados por eventid)
+        phase1_eventids = set(p["eventid"] for p in phase1_problems)
+        combined_problems = phase1_problems + [p for p in resolved_in_range if p["eventid"] not in phase1_eventids]
+        
+        problems = combined_problems
+        logger.info(f"Total combined raw problems (history): {len(problems)}")
         
         # Paso 2: Obtener información de hosts usando event.get con los eventids
         # event.get SÍ soporta selectHosts
@@ -583,6 +706,8 @@ class ZabbixAPI:
             if host_enabled:
                 host_filtered.append(problem)
         
+        logger.info(f"Problems after host filter (history): {len(host_filtered)} (removed {len(problems) - len(host_filtered)})")
+        
         # Filtrar problemas de triggers deshabilitados
         # Obtener triggerids de los problemas filtrados por host
         if host_filtered:
@@ -616,6 +741,7 @@ class ZabbixAPI:
         else:
             filtered_problems = []
         
+        logger.info(f"Final filtered problems (history): {len(filtered_problems)} (removed {len(host_filtered) - len(filtered_problems)} disabled triggers)")
         return filtered_problems
 
     def get_hosts_by_group(self, groupid: str) -> list:
@@ -677,7 +803,25 @@ class ZabbixAPI:
             "sortorder": "DESC"
         }
 
-        events = self._make_request("event.get", params)
+        # Manejar paginación para obtener todos los resultados
+        all_events = []
+        batch_limit = 10000  # Límite por petición
+        params["limit"] = batch_limit
+        
+        while True:
+            batch = self._make_request("event.get", params)
+            logger.debug(f"event.get (history) returned {len(batch)} events (total so far: {len(all_events)})")
+            if not batch:
+                break
+            all_events.extend(batch)
+            if len(batch) < batch_limit:
+                break
+            # Para la siguiente página, usar el último eventid como offset
+            last_eventid = batch[-1]["eventid"]
+            params["search"] = {"eventid": last_eventid}
+        
+        events = all_events
+        logger.info(f"Total raw events from event.get (history): {len(events)}")
         
         # Filtrar eventos de hosts deshabilitados (status=1)
         filtered_events = []
@@ -688,6 +832,8 @@ class ZabbixAPI:
             host_enabled = any(str(h.get("status", "0")) == "0" for h in hosts)
             if host_enabled:
                 filtered_events.append(event)
+        
+        logger.info(f"Events after host filter: {len(filtered_events)} (removed {len(events) - len(filtered_events)})")
         
         # Obtener triggers con información de status para filtrar triggers deshabilitados
         final_events = []
@@ -708,4 +854,5 @@ class ZabbixAPI:
                     e["triggers"] = [trigger]
                     final_events.append(e)
         
+        logger.info(f"Final filtered events: {len(final_events)} (removed {len(filtered_events) - len(final_events)} disabled triggers)")
         return final_events

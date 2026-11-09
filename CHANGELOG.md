@@ -2,24 +2,22 @@
 
 Todos los cambios notables en este proyecto serán documentados en este archivo.
 
-## [0.18.0] - 2026-11-09
+## [0.19.0] - 2026-11-09
 
 ### Corregido
-- **Macros Zabbix no resueltas en HTML**: Corregida la falta de resolución de macros `{ITEM.VALUE1}` y `{HOST.CONN}` en los informes HTML. Actualizado `zabbix_api.py` para incluir estas macros en `resolve_macros()` y `COMMON_MACROS`.
-- **UnboundLocalError en `get_events_history()`**: Corregido error `cannot access local variable 'final_events' where it is not associated with a value` en `zabbix_api.py:646`. La variable `final_events` solo se definía dentro del bloque `if filtered_events:`, causando fallo cuando no había eventos filtrados. Solucionado inicializando `final_events = []` antes del bloque condicional.
-- **Filtrado de estado host/trigger (string vs integer)**: La API de Zabbix devuelve los campos `status` como strings ("0"/"1") no enteros. El filtrado `h.get("status") == 0` fallaba silenciosamente. Corregido en 4 ubicaciones usando `str(h.get("status", "0")) == "0"` para manejar ambos tipos y default a habilitado.
-- **Triggers deshabilitados en tabla "Alertas Activas"**: El método `get_active_problems_raw()` solo filtraba por estado de host, NO por estado de trigger. Añadido filtrado de `trigger.status = 0` consultando `trigger.get` con los `objectid` (triggerids) de los problemas.
-- **Falta de `objectid` en `problem.get`**: La consulta `problem.get` no devolvía `objectid` por defecto, impidiendo obtener el triggerid para filtrar. Añadido `"objectid"` al parámetro `output` en `get_active_problems_raw()`.
+- **Filtro temporal en `get_problems_history()`**: Corregido el uso de `time_from` en `problem.get` para incluir problemas activos durante el periodo, no solo creados en él.
+- **Pérdida de tags GLPI duplicados**: Corregido el parseo de tags en `data_collector.py` para preservar todos los tags `__zbx_glpi_link` en lugar de sobrescribirlos en un diccionario.
+
+### Añadido
+- **Depuración de API y Tags**: Añadidos logs de depuración para contar registros brutos de la API y detectar correctamente múltiples tags `__zbx_glpi_link`.
 
 ### Cambiado
 - **`zabbix_api.py`**:
-  - `get_events_history()`: Inicializada `final_events = []` antes del bloque `if filtered_events:` (línea ~695).
-  - `get_active_problems()`: Filtrado host/trigger usando `str(status) == "0"` (líneas ~259, ~289).
-  - `get_active_problems_raw()`: Añadido `"objectid"` a `output` (línea ~406) + filtrado de triggers deshabilitados (líneas ~468-501).
-  - `get_problems_history()`: Filtrado host/trigger usando `str(status) == "0"` (líneas ~589, ~605).
-  - `get_events_history()`: Filtrado host/trigger usando `str(status) == "0"` (líneas ~690, ~708).
-  - Eliminados todos los `print(f"DEBUG: ...")` de depuración del código de producción.
-- **Versión**: Incrementada a 0.18.0 para reflejar las correcciones críticas de filtrado y el bug UnboundLocalError.
+  - `get_problems_history()`: Ajustado el filtrado temporal para capturar correctamente el histórico.
+- **`data_collector.py`**:
+  - `_enrich_problems()`: Modificado para preservar todos los tags en `tags_list` y mantener compatibilidad con `tags_dict`.
+  - `get_glpi_links()`: Actualizado para iterar sobre `tags_list` y procesar múltiples enlaces GLPI.
+- **Versión**: Incrementada a 0.19.0.
 
 ## [0.17.0] - 2026-11-09
 

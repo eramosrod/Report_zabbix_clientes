@@ -433,6 +433,43 @@ Se ha implementado el método `resolve_macros()` en `ZabbixAPI` para resolver ma
 - **`CHANGELOG.md`**: Registrada versión 0.18.0 con detalles de correcciones.
 - **`MEMORIA.md`**: Actualizada con documentación técnica de la Fase 13.
 
+### 🆕 **NUEVO en Fase 14 - Corrección de Filtrado Temporal y Parsing de Tags GLPI (Versión 0.19.0)**
+
+#### 🐛 **Problema 1: Filtrado Incorrecto por `time_from` en `problem.get`**
+- **Problema**: El parámetro `time_from` en la consulta `problem.get` filtra por **tiempo de creación** (`clock`) del problema, no por su estado activo en el rango. Esto excluía problemas abiertos **antes** del rango pero que permanecían activos o se resolvían **dentro** del rango.
+- **Causa**: Zabbix `problem.get` con `time_from`/`time_till` filtra por `clock` (creación). Un problema creado el día 1 y resuelto el día 10 no aparece si se consulta `time_from`=día 5.
+- **Solución**: Implementada **estrategia de dos consultas** en `get_problems_history()` (`zabbix_api.py`):
+  1. **Consulta 1**: Problemas creados **dentro** del rango (`time_from` ≤ `clock` ≤ `time_till`).
+  2. **Consulta 2**: **Todos los problemas activos** (sin filtro temporal) → filtrado local: mantener solo los que `clock < time_from` **Y** (`r_clock` ≥ `time_from` O `r_clock` = 0 = aún activo).
+  3. **Combinación**: Unión de ambos conjuntos (evitando duplicados por `eventid`).
+- **Resultado**: El histórico ahora captura correctamente problemas que "cruzan" el rango temporal (abiertos antes, activos/resueltos dentro).
+
+#### 🐛 **Problema 2: Parsing de Tags GLPI - Duplicados Perdidos**
+- **Problema**: La lógica de enriquecimiento en `_enrich_problems()` almacenaba tags en un **diccionario** (`tags_dict`), donde claves duplicadas (`__zbx_glpi_link`) se sobrescribían, perdiendo tickets GLPI asociados al mismo problema.
+- **Causa**: Conversión `tags_list → {t['tag']: t['value'] for t in tags_list}` colapsa múltiples tags con la misma clave.
+- **Solución** en `data_collector.py`:
+  1. **`_enrich_problems()`**: Mantiene **ambas** estructuras:
+     - `tags_list`: Lista original de diccionarios `[{"tag": "...", "value": "..."}, ...]` → **preserva duplicados**.
+     - `tags_dict`: Diccionario `{tag: value}` → **compatibilidad hacia atrás** (último valor gana).
+  2. **`get_glpi_links()`**: Itera sobre `tags_list` (no `tags_dict`) para procesar **todas** las ocurrencias de `__zbx_glpi_link`.
+- **Resultado**: Problemas con múltiples tickets GLPI ahora aparecen todos en la tabla de enlaces.
+
+#### 🔍 **Logging de Depuración para Producción**
+- Añadidos logs `logging.debug()` en puntos críticos de `data_collector.py` (`get_complete_report_data`):
+  - Conteos de problemas crudos (`raw_problems`), eventos crudos (`raw_events`), problemas enriquecidos, eventos enriquecidos.
+  - Conteos de enlaces GLPI detectados vs. parseados exitosamente.
+  - Detalle por problema: `eventid`, host, tags GLPI encontrados, tickets parseados.
+- **Uso**: Ejecutar con `LOG_LEVEL=DEBUG python main.py ...` para diagnóstico sin modificar código.
+
+#### 📝 **Archivos Modificados**
+- **`zabbix_api.py`**:
+  - `get_problems_history()`: Reescrito con estrategia de dos consultas para filtrado temporal correcto.
+- **`data_collector.py`**:
+  - `_enrich_problems()`: Almacena `tags_list` (lista) y `tags_dict` (dict) para preservar duplicados.
+  - `get_glpi_links()`: Usa `tags_list` para iterar todas las ocurrencias de `__zbx_glpi_link`.
+  - `get_complete_report_data()`: Añadido logging debug exhaustivo de conteos y detalles GLPI.
+- **`CHANGELOG.md`**: Registrada versión 0.19.0 con detalles de correcciones y logging.
+
 ### 🔄 Próximos Pasos (Fase 9+)
 - Exportación a CSV/Excel.
 - Filtros avanzados por severidad, entorno, rango temporal.
