@@ -361,9 +361,10 @@ class DataCollector:
         """
         Crea un mapa de hostid -> groupid para asociación rápida.
         Un host puede pertenecer a múltiples grupos; se asocia al primero encontrado.
+        Normaliza todos los hostids a string para evitar problemas de tipo (int vs str).
         
         Returns:
-            Diccionario hostid -> groupid
+            Diccionario hostid (string) -> groupid
         """
         hostgroup_map = {}
         all_hosts_by_group = self.get_all_hosts_by_group()
@@ -371,9 +372,11 @@ class DataCollector:
         for groupid, hosts in all_hosts_by_group.items():
             for host in hosts:
                 hostid = host['hostid']
+                # Normalizar hostid a string para evitar problemas de tipo (int vs str)
+                hostid_str = str(hostid)
                 # Solo asignar si no tiene grupo asignado (primer grupo encontrado)
-                if hostid not in hostgroup_map:
-                    hostgroup_map[hostid] = groupid
+                if hostid_str not in hostgroup_map:
+                    hostgroup_map[hostid_str] = groupid
         
         return hostgroup_map
     
@@ -405,7 +408,9 @@ class DataCollector:
             if problem_hosts:
                 # Tomar el primer host del problema
                 hostid = problem_hosts[0].get('hostid')
-                groupid = hostgroup_map.get(hostid)
+                # Normalizar hostid a string para coincidir con el mapa (fix int vs str)
+                hostid_str = str(hostid)
+                groupid = hostgroup_map.get(hostid_str)
                 
                 if groupid and groupid in result:
                     result[groupid].append(problem)
@@ -587,6 +592,7 @@ class DataCollector:
     def get_glpi_links(self, problems: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
         Extrae los enlaces GLPI de los problemas que tengan el tag '__zbx_glpi_link'.
+        FIX: Usa una lista para preservar TODOS los tags __zbx_glpi_link (evita colisiones de diccionario).
         
         Args:
             problems: Lista de problemas enriquecidos (con campos 'tags' y 'tags_list')
@@ -602,47 +608,45 @@ class DataCollector:
             glpi_links_found = []
             
             # Recorrer TODOS los tags para encontrar __zbx_glpi_link
+            # FIX: No usar diccionario que sobrescribe, usar lista para preservar todos
             for tag in tags_list:
                 if tag.get("tag") == "__zbx_glpi_link":
                     glpi_link = tag.get("value", "")
-                    glpi_links_found.append(glpi_link)
-            
-            # DEBUG: Contar GLPI links encontrados
-            logger.debug(f"Problem {problem.get('eventid')} has {len(glpi_links_found)} __zbx_glpi_link tag(s)")
+                    if glpi_link:  # Solo agregar si no está vacío
+                        glpi_links_found.append(glpi_link)
             
             # Para cada __zbx_glpi_link encontrado, crear un enlace GLPI
             for glpi_link in glpi_links_found:
-                if glpi_link:
-                    # El valor del tag puede ser una URL completa o un ID de ticket
-                    # Intentar extraer ticket_id si es una URL de GLPI
-                    ticket_id = glpi_link
-                    title = problem.get('description', 'Sin descripción')
-                    url = glpi_link
-                    status = 'Abierto' if not problem.get('is_resolved', False) else 'Resuelto'
-                    
-                    # Si es una URL, intentar extraer el ID del ticket
-                    if glpi_link.startswith('http'):
-                        # Patrones comunes: /front/ticket.form.php?id=123 o /tickets/123
-                        import re
-                        match = re.search(r'[?&]id=(\d+)', glpi_link)
+                # El valor del tag puede ser una URL completa o un ID de ticket
+                # Intentar extraer ticket_id si es una URL de GLPI
+                ticket_id = glpi_link
+                title = problem.get('description', 'Sin descripción')
+                url = glpi_link
+                status = 'Abierto' if not problem.get('is_resolved', False) else 'Resuelto'
+                
+                # Si es una URL, intentar extraer el ID del ticket
+                if glpi_link.startswith('http'):
+                    # Patrones comunes: /front/ticket.form.php?id=123 o /tickets/123
+                    import re
+                    match = re.search(r'[?&]id=(\d+)', glpi_link)
+                    if match:
+                        ticket_id = match.group(1)
+                    else:
+                        match = re.search(r'/tickets?/(\d+)', glpi_link)
                         if match:
                             ticket_id = match.group(1)
-                        else:
-                            match = re.search(r'/tickets?/(\d+)', glpi_link)
-                            if match:
-                                ticket_id = match.group(1)
-                    
-                    glpi_links.append({
-                        'ticket_id': ticket_id,
-                        'title': title,
-                        'url': url,
-                        'status': status,
-                        'host': problem.get('host', 'Desconocido'),
-                        'severity': problem.get('severity', 'Not classified'),
-                        'eventid': problem.get('eventid')
-                    })
+                
+                glpi_links.append({
+                    'ticket_id': ticket_id,
+                    'title': title,
+                    'url': url,
+                    'status': status,
+                    'host': problem.get('host', 'Desconocido'),
+                    'severity': problem.get('severity', 'Not classified'),
+                    'eventid': problem.get('eventid')
+                })
         
-        # DEBUG: Resumen final de GLPI links
+        # Resumen final de GLPI links
         total_glpi_links = len(glpi_links)
         problems_with_glpi = len(set(link['eventid'] for link in glpi_links))
         logger.info(f"GLPI Summary: {total_glpi_links} total GLPI links found across {problems_with_glpi} problems")

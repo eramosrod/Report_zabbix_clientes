@@ -440,6 +440,12 @@ class ZabbixAPI:
         problems = all_problems
         logger.info(f"Total raw problems from problem.get: {len(problems)}")
         
+        # DEBUG: Contar problemas con tags
+        problems_with_tags = sum(1 for p in problems if p.get("tags"))
+        total_tags = sum(len(p.get("tags", [])) for p in problems)
+        glpi_tags = sum(1 for p in problems for t in p.get("tags", []) if t.get("tag") == "__zbx_glpi_link")
+        logger.info(f"DEBUG problem.get: {problems_with_tags} problems have tags, {total_tags} total tags, {glpi_tags} __zbx_glpi_link tags")
+        
         # Obtener información de hosts usando event.get con los eventids
         # event.get SÍ soporta selectHosts
         if problems:
@@ -462,6 +468,13 @@ class ZabbixAPI:
             event_hosts_map = {}
             for event in all_events:
                 event_hosts_map[event["eventid"]] = event.get("hosts", [])
+            
+            # DEBUG: Verificar hostids en el mapa
+            sample_hostids = []
+            for eventid, hosts in list(event_hosts_map.items())[:5]:
+                for h in hosts:
+                    sample_hostids.append((eventid, h.get('hostid'), type(h.get('hostid')).__name__))
+            logger.debug(f"DEBUG event_hosts_map sample: {sample_hostids}")
             
             # Enriquecer problemas con información de hosts
             for problem in problems:
@@ -688,6 +701,13 @@ class ZabbixAPI:
             for event in all_events:
                 event_hosts_map[event["eventid"]] = event.get("hosts", [])
             
+            # DEBUG: Verificar hostids en el mapa
+            sample_hostids = []
+            for eventid, hosts in list(event_hosts_map.items())[:5]:
+                for h in hosts:
+                    sample_hostids.append((eventid, h.get('hostid'), type(h.get('hostid')).__name__))
+            logger.debug(f"DEBUG event_hosts_map (history) sample: {sample_hostids}")
+            
             # Enriquecer problemas con información de hosts
             for problem in problems:
                 eventid = problem["eventid"]
@@ -822,6 +842,13 @@ class ZabbixAPI:
         
         events = all_events
         logger.info(f"Total raw events from event.get (history): {len(events)}")
+        
+        # DEBUG: Verificar hostids en eventos
+        sample_hostids = []
+        for event in events[:5]:
+            for h in event.get("hosts", []):
+                sample_hostids.append((event.get('eventid'), h.get('hostid'), type(h.get('hostid')).__name__))
+        logger.debug(f"DEBUG event.get (history) hostids sample: {sample_hostids}")
         
         # Filtrar eventos de hosts deshabilitados (status=1)
         filtered_events = []

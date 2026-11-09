@@ -2,23 +2,29 @@
 
 Todos los cambios notables en este proyecto serán documentados en este archivo.
 
-## [0.19.0] - 2026-11-09
+## [0.20.0] - 2026-11-09
 
 ### Corregido
+- **Bug 1 - Conteo incorrecto de alertas por Entorno (HostGroups)**: La tabla de resumen de entornos mostraba ceros o conteos incorrectos porque los IDs de host (`hostid`) se comparaban como enteros vs strings entre el mapa de hostgroups y los problemas de la API. **Solución**: Normalización sistemática de todos los `hostid` a `string` en `get_hostgroup_map()` y `group_problems_by_hostgroup()` (`data_collector.py`).
+- **Bug 2 - Recopilación parcial de tickets GLPI (`__zbx_glpi_link`)**: Algunos tickets GLPI se omitían porque el enriquecimiento de problemas usaba un diccionario (`tags_dict`) que sobrescribía claves duplicadas. **Solución**: Preservar todos los tags en una lista (`tags_list`) y iterar sobre ella en `get_glpi_links()` para procesar múltiples `__zbx_glpi_link` por problema (`data_collector.py`).
 - **Filtro temporal en `get_problems_history()`**: Corregido el uso de `time_from` en `problem.get` para incluir problemas activos durante el periodo, no solo creados en él.
 - **Pérdida de tags GLPI duplicados**: Corregido el parseo de tags en `data_collector.py` para preservar todos los tags `__zbx_glpi_link` en lugar de sobrescribirlos en un diccionario.
 - **Filtro temporal incompleto en Fase 2**: Corregida la condición de inclusión de problemas resueltos en la Fase 2 para verificar `time_from <= resolution_clock <= time_till` (antes solo verificaba `<= time_till`), evitando que problemas resueltos antes del rango se incluyeran incorrectamente.
 
 ### Añadido
 - **Depuración de API y Tags**: Añadidos logs de depuración para contar registros brutos de la API y detectar correctamente múltiples tags `__zbx_glpi_link`.
+- **Traza de depuración para HostGroups**: Logs en `get_hostgroup_map()` y `group_problems_by_hostgroup()` para diagnosticar mapeo hostid→groupid y conteo de problemas por entorno.
 
 ### Cambiado
 - **`zabbix_api.py`**:
   - `get_problems_history()`: Ajustado el filtrado temporal para capturar correctamente el histórico (Fase 1 y Fase 2).
+  - Añadidos logs de depuración en `get_active_problems_raw()`, `get_problems_history()` y `get_events_history()` para inspeccionar hostids y tags.
 - **`data_collector.py`**:
+  - `get_hostgroup_map()`: Normaliza `hostid` a string para evitar colisiones int vs str.
+  - `group_problems_by_hostgroup()`: Normaliza `hostid` del problema a string antes de buscar en el mapa.
   - `_enrich_problems()`: Modificado para preservar todos los tags en `tags_list` y mantener compatibilidad con `tags_dict`.
   - `get_glpi_links()`: Actualizado para iterar sobre `tags_list` y procesar múltiples enlaces GLPI.
-- **Versión**: Incrementada a 0.19.0.
+- **Versión**: Incrementada a 0.20.0.
 
 ## [0.17.0] - 2026-11-09
 

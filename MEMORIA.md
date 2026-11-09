@@ -471,6 +471,40 @@ Se ha implementado el método `resolve_macros()` en `ZabbixAPI` para resolver ma
   - `get_complete_report_data()`: Añadido logging debug exhaustivo de conteos y detalles GLPI.
 - **`CHANGELOG.md`**: Registrada versión 0.19.0 con detalles de correcciones y logging.
 
+### 🆕 **NUEVO en Fase 15 - Corrección de Bugs Críticos en Producción: Conteo HostGroups y Tags GLPI (Versión 0.20.0)**
+
+#### 🐛 **Bug 1: Conteo Incorrecto de Alertas por Entorno (HostGroups)**
+- **Problema**: La tabla de resumen de entornos (HostGroups) mostraba ceros o conteos incorrectos de alertas activas. Los problemas no se asociaban correctamente a sus grupos de hosts.
+- **Causa Raíz**: **Incompatibilidad de tipos en IDs**. La API de Zabbix devuelve `hostid` como **entero** en algunas consultas (`host.get`) y como **string** en otras (`event.get`/`problem.get` → `hosts[]`). El mapa `hostgroup_map` se construía con `hostid` como string (desde `host.get`), pero al buscar con `hostid` del problema (que venía como entero), la clave no coincidía (`"12345" != 12345`), resultando en problemas sin grupo asociado (`sin_grupo`).
+- **Solución** en `data_collector.py`:
+  1. **`get_hostgroup_map()`**: Normaliza todos los `hostid` a **string** al construir el mapa (`str(hostid)`).
+  2. **`group_problems_by_hostgroup()`**: Normaliza el `hostid` del problema a **string** antes de buscar en el mapa (`str(hostid)`).
+- **Resultado**: Asociación correcta de problemas a HostGroups, conteo preciso en la tabla "Estado de Entornos".
+
+#### 🐛 **Bug 2: Recopilación Parcial de Tickets GLPI (`__zbx_glpi_link`)**
+- **Problema**: Aparecían algunos tickets GLPI pero otros se omitían inexplicablemente cuando un problema tenía múltiples tags `__zbx_glpi_link`.
+- **Causa Raíz**: **Colisión de claves en diccionario**. Aunque `_enrich_problems()` guardaba `tags_list` (lista), el método `get_glpi_links()` en versiones previas a 0.19.0 usaba `tags_dict` (diccionario) que sobrescribía claves duplicadas. Incluso en 0.19.0, la lógica de iteración necesitaba robustez adicional.
+- **Solución** en `data_collector.py`:
+  1. **`get_glpi_links()`**: Refactorizado para iterar **exclusivamente sobre `tags_list`** (lista que preserva duplicados), recolectando **todas** las ocurrencias de `__zbx_glpi_link` en una lista local `glpi_links_found` antes de procesarlas.
+  2. **Validación**: Se añade comprobación `if glpi_link:` para ignorar valores vacíos.
+- **Resultado**: Todos los tickets GLPI asociados a un problema (incluso múltiples) aparecen en la tabla de enlaces.
+
+#### 🔍 **Traza de Depuración Añadida**
+- **`get_hostgroup_map()`**: Log del mapa construido (tamaño y ejemplos) para verificar normalización string.
+- **`group_problems_by_hostgroup()`**: Logs de problemas totales, asociados correctamente y sin grupo (`sin_grupo`), con detalle de `hostid` y tipo cuando falla el match.
+- **`get_glpi_links()`**: Logs por problema con todos sus tags, y resumen final de enlaces GLPI totales y problemas con GLPI.
+- **`zabbix_api.py`**: Logs en `get_active_problems_raw()`, `get_problems_history()`, `get_events_history()` mostrando hostids (valor y tipo) y conteo de tags `__zbx_glpi_link` en bruto.
+
+#### 📝 **Archivos Modificados**
+- **`data_collector.py`**:
+  - `get_hostgroup_map()`: Normalización `hostid` a string.
+  - `group_problems_by_hostgroup()`: Normalización `hostid` a string + logs de depuración.
+  - `get_glpi_links()`: Iteración robusta sobre `tags_list` + logs de depuración.
+- **`zabbix_api.py`**:
+  - `get_active_problems_raw()`, `get_problems_history()`, `get_events_history()`: Logs de depuración de hostids y tags.
+- **`CHANGELOG.md`**: Registrada versión 0.20.0 con detalles de correcciones y logging.
+- **`MEMORIA.md`**: Actualizada con documentación técnica de la Fase 15.
+
 ### 🔄 Próximos Pasos (Fase 9+)
 - Exportación a CSV/Excel.
 - Filtros avanzados por severidad, entorno, rango temporal.
