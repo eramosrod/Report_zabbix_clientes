@@ -650,7 +650,7 @@ class ZabbixAPI:
                     if r_eventid:
                         # Problema resuelto: verificar si se resolvió dentro del rango
                         resolution_clock = resolution_clocks.get(r_eventid, 0)
-                        if resolution_clock <= time_till:
+                        if time_from <= resolution_clock <= time_till:
                             resolved_in_range.append(problem)
                     else:
                         # Problema activo actualmente (sin r_eventid) - incluirlo

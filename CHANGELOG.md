@@ -7,13 +7,14 @@ Todos los cambios notables en este proyecto serán documentados en este archivo.
 ### Corregido
 - **Filtro temporal en `get_problems_history()`**: Corregido el uso de `time_from` en `problem.get` para incluir problemas activos durante el periodo, no solo creados en él.
 - **Pérdida de tags GLPI duplicados**: Corregido el parseo de tags en `data_collector.py` para preservar todos los tags `__zbx_glpi_link` en lugar de sobrescribirlos en un diccionario.
+- **Filtro temporal incompleto en Fase 2**: Corregida la condición de inclusión de problemas resueltos en la Fase 2 para verificar `time_from <= resolution_clock <= time_till` (antes solo verificaba `<= time_till`), evitando que problemas resueltos antes del rango se incluyeran incorrectamente.
 
 ### Añadido
 - **Depuración de API y Tags**: Añadidos logs de depuración para contar registros brutos de la API y detectar correctamente múltiples tags `__zbx_glpi_link`.
 
 ### Cambiado
 - **`zabbix_api.py`**:
-  - `get_problems_history()`: Ajustado el filtrado temporal para capturar correctamente el histórico.
+  - `get_problems_history()`: Ajustado el filtrado temporal para capturar correctamente el histórico (Fase 1 y Fase 2).
 - **`data_collector.py`**:
   - `_enrich_problems()`: Modificado para preservar todos los tags en `tags_list` y mantener compatibilidad con `tags_dict`.
   - `get_glpi_links()`: Actualizado para iterar sobre `tags_list` y procesar múltiples enlaces GLPI.

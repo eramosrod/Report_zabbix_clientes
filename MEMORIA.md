@@ -439,10 +439,11 @@ Se ha implementado el método `resolve_macros()` en `ZabbixAPI` para resolver ma
 - **Problema**: El parámetro `time_from` en la consulta `problem.get` filtra por **tiempo de creación** (`clock`) del problema, no por su estado activo en el rango. Esto excluía problemas abiertos **antes** del rango pero que permanecían activos o se resolvían **dentro** del rango.
 - **Causa**: Zabbix `problem.get` con `time_from`/`time_till` filtra por `clock` (creación). Un problema creado el día 1 y resuelto el día 10 no aparece si se consulta `time_from`=día 5.
 - **Solución**: Implementada **estrategia de dos consultas** en `get_problems_history()` (`zabbix_api.py`):
-  1. **Consulta 1**: Problemas creados **dentro** del rango (`time_from` ≤ `clock` ≤ `time_till`).
-  2. **Consulta 2**: **Todos los problemas activos** (sin filtro temporal) → filtrado local: mantener solo los que `clock < time_from` **Y** (`r_clock` ≥ `time_from` O `r_clock` = 0 = aún activo).
+  1. **Consulta 1 (Fase 1)**: Problemas creados **dentro** del rango (`time_from` ≤ `clock` ≤ `time_till`).
+  2. **Consulta 2 (Fase 2)**: **Todos los problemas activos** (sin filtro temporal) → filtrado local: mantener solo los que `clock < time_from` **Y** (`r_clock` ≥ `time_from` O `r_clock` = 0 = aún activo).
   3. **Combinación**: Unión de ambos conjuntos (evitando duplicados por `eventid`).
-- **Resultado**: El histórico ahora captura correctamente problemas que "cruzan" el rango temporal (abiertos antes, activos/resueltos dentro).
+- **Corrección adicional (Fase 2)**: La condición original solo verificaba `resolution_clock <= time_till`, permitiendo que problemas resueltos **antes** de `time_from` se incluyeran. Corregido a `time_from <= resolution_clock <= time_till`.
+- **Resultado**: El histórico ahora captura correctamente problemas que "cruzan" el rango temporal (abiertos antes, activos/resueltos dentro), excluyendo los resueltos antes del rango.
 
 #### 🐛 **Problema 2: Parsing de Tags GLPI - Duplicados Perdidos**
 - **Problema**: La lógica de enriquecimiento en `_enrich_problems()` almacenaba tags en un **diccionario** (`tags_dict`), donde claves duplicadas (`__zbx_glpi_link`) se sobrescribían, perdiendo tickets GLPI asociados al mismo problema.
@@ -463,7 +464,7 @@ Se ha implementado el método `resolve_macros()` en `ZabbixAPI` para resolver ma
 
 #### 📝 **Archivos Modificados**
 - **`zabbix_api.py`**:
-  - `get_problems_history()`: Reescrito con estrategia de dos consultas para filtrado temporal correcto.
+  - `get_problems_history()`: Reescrito con estrategia de dos consultas para filtrado temporal correcto (Fase 1 y Fase 2).
 - **`data_collector.py`**:
   - `_enrich_problems()`: Almacena `tags_list` (lista) y `tags_dict` (dict) para preservar duplicados.
   - `get_glpi_links()`: Usa `tags_list` para iterar todas las ocurrencias de `__zbx_glpi_link`.
